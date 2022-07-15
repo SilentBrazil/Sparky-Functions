@@ -15,7 +15,7 @@ exports.newPodcast = functions.firestore.document("Podcasts/{podcastId}")
       const data = snapshot.data();
       console.log("Podcast found: ", data);
       const podcast = {
-        "id": data.key,
+        "id": data.id,
         "name": data["name"],
         "iconURL": data["iconUrl"],
       };
