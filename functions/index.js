@@ -1,43 +1,52 @@
 const functions = require("firebase-functions");
-const admin = require('firebase-admin');
-admin.initializeApp(functions.config().firebase);
+const admin = require("firebase-admin");
+admin.initializeApp();
 
+// // Create and Deploy Your First Cloud Functions
+// // https://firebase.google.com/docs/functions/write-firebase-functions
+//
+// exports.helloWorld = functions.https.onRequest((request, response) => {
+//   functions.logger.info("Hello logs!", {structuredData: true});
+//   response.send("Hello from Firebase!");
+// });
 
-exports.newEpisodes = functions.database.ref('/Podcasts/{podcastId}').onWrite(async (change, context) => {
-    const podcastId = context.params.podcastId
-    var db = admin.firestore();
-    const podcastRef = db.collection('Podcasts').doc(podcastId)
-    const podcastDoc = await podcastRef.get()
+exports.newPodcast = functions.firestore.document("Podcasts/{podcastId}")
+    .onCreate((snapshot, context) => {
+      const data = snapshot.data();
+      console.log("Podcast found: ", data);
+      const podcast = {
+        "id": data.key,
+        "name": data["name"],
+        "iconURL": data["iconUrl"],
+      };
+      return sendPodcastNotification(podcast, "SparkyUsers");
+    });
 
-    if(!podcastDoc.exists) {
-        console.log('Podcast not found!');
+exports.podcastUpdate = functions.firestore.document("Podcasts/{podcastId}")
+    .onWrite((change, context) => {
+      const dataSnapshot = change.after.data();
+      console.log("new podcast -> ", dataSnapshot);
+      const podcast = {
+        "id": dataSnapshot.id,
+        "name": dataSnapshot["name"],
+        "iconURL": dataSnapshot["iconUrl"],
+      };
+      return sendPodcastNotification(podcast, podcast.id);
+    });
 
-    } else {
-        conseole.log('Podcast found: ', podcastDoc.data())
-        var data = podcastDoc.data()
-        var podcast = {
-            "id": doc.id,
-            "name": doc['name'],
-            "iconURL": doc['iconUrl']
-        }
-        const payLoad = {
-            notification: {
-                title: 'Salve salve família!',
-                body: `Tem novidade no ${podcast.name}`,
-                icon: podcast.iconURL,
-                click_action: podcast.id
-            }
-        }
-
-        const options = {
-            priority: "default",
-            timeToLive: 60*60*2
-        };
-
-        return admin.messaging().sendToTopic(podcast.id, payLoad, options)
-    }
-     
-   
-
-
-})
+/**
+ *
+ * @param {object} podcast gets podcast data to send notification
+ * @param {string} topic to send usersMessage
+ * @return {task} fcm notification task
+ */
+function sendPodcastNotification(podcast, topic) {
+  const payLoad = {
+    notification: {
+      title: "Salve salve família!",
+      body: `Tem novidade no ${podcast.name}`,
+      click_action: podcast.id,
+    },
+  };
+  return admin.messaging().sendToTopic(topic, payLoad);
+}

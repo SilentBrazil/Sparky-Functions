@@ -1,0 +1,62 @@
+{
+  "name": "functions",
+  "description": "Cloud Functions for Firebase",
+  "scripts": {
+    "lint": "eslint .",
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "engines": {
+    "node": "14"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^11.0.0",
+    "firebase-functions": "^3.22.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.9.0",
+    "eslint-config-google": "^0.14.0",
+    "firebase-functions-test": "^0.2.0"
+  },
+  "private": true
+}
+
+
+
+const podcastId = context.params.podcastId;
+        var db = admin.firestore();
+        const podcastRef = db.collection("Podcasts").doc(podcastId);
+        const podcastDoc = await podcastRef.get();
+
+        if (!podcastDoc.exists) {
+            console.log("Podcast not found!", podcastId);
+            return;
+        }
+
+
+        console.log("Podcast found: ", podcastDoc.data());
+        var data = podcastDoc.data();
+        var podcast = {
+            "id": data.id,
+            "name": data["name"],
+            "iconURL": data["iconUrl"]
+        };
+        const payLoad = {
+            notification: {
+                title: "Salve salve família!",
+                body: `Tem novidade no ${podcast.name}`,
+                icon: podcast.iconURL,
+                click_action: podcast.id
+            }
+        };
+
+        const options = {
+            priority: "default",
+            timeToLive: 60 * 60 * 2
+        };
+
+        return admin.messaging().sendToTopic(podcast.id, payLoad, options);
