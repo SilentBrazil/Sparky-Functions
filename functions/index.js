@@ -49,13 +49,17 @@ function sendPodcastNotification(podcast, topic) {
     notIcon = podcast.notificationIcon;
   }
   const payLoad = {
-    notification: {
-      icon: notIcon,
-      color: String(podcast.highLightColor),
-      title: title,
-      body: `Tem novidade no ${podcast.name}`,
-      click_action: podcast.id,
+    "notification": {
+      "icon": notIcon,
+      "color": String(podcast.highLightColor),
+      "title": title,
+      "body": `Tem novidade no ${podcast.name}`,
+      "click_action": "com.silent.sparky.features.home.HomeActivity",
+    },
+    "data": {
+      "podcastId": String(podcast.id),
     },
   };
+  console.log("notification payload -> ", payLoad.notification);
   return admin.messaging().sendToTopic(topic, payLoad);
 }
