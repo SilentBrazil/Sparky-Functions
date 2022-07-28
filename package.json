@@ -1,0 +1,26 @@
+{
+  "name": "sparky",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SilentBrazil/Sparky-Functions.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/SilentBrazil/Sparky-Functions/issues"
+  },
+  "homepage": "https://github.com/SilentBrazil/Sparky-Functions#readme",
+  "dependencies": {
+    "babel-eslint": "^10.1.0",
+    "eslint": "^8.20.0",
+    "firebase": "^9.9.1",
+    "request": "^2.88.2"
+  }
+}
