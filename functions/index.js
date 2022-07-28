@@ -164,20 +164,29 @@ function sendPodcastLiveNotification(podcast, topic, message, video) {
  * @param {string} youtubeId channel to lookup for live
  * @param {function} responseResult if success will return the object
  */
-function requestYoutubeLive(youtubeId, responseResult) {
+async function requestYoutubeLive(youtubeId, responseResult) {
   const requestUrl = "https://www.googleapis.com/youtube/v3/";
   const query = `search?part=snippet&channelId=${youtubeId}`;
   // eslint-disable-next-line max-len
   const requestExtras = `&type=video&eventType=live&maxResults=1&key=${config.YOUTUBE_KEY}`;
 
   const requestBuild = requestUrl + query + requestExtras;
-  request(requestBuild, function(error, response, body) {
-    if (!error && response.statusCode == 200) {
+  const youtubeRequest = await request(requestBuild);
+  if (!youtubeRequest.error && youtubeRequest.response.statusCode == 200) {
+    const object = JSON.parse(youtubeRequest.body);
+    if (object.items.length > 0) {
+      const video = getVideoObject(object.items[0]);
+      responseResult(video);
+    } else {
+      console.error("API didn't found any result for id ", youtubeId);
+    }
+  } else {
+    console.log(`Error searching for live -> ${youtubeRequest.response}`);
+  }
+0) {
       const object = JSON.parse(body);
       responseResult(object);
     } else {
       console.log(`Error searching for live -> ${response}`);
     }
   });
-}
-
