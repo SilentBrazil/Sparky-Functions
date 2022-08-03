@@ -1,5 +1,7 @@
-const config = require("./config");
+/* eslint-disable max-len */
 const request = require("request");
+const youtubeRequestUrl = "https://www.googleapis.com/youtube/v3/search";
+const config = require("./config");
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const podcastCollection = "Podcasts";
@@ -16,24 +18,26 @@ exports.newPodcast = functions.firestore.document("Podcasts/{podcastId}")
 
 exports.podcastLiveCheck = functions.pubsub
     .schedule("every 1 hours")
-    .timeZone("America/Sao_Paulo")
+    .timeZone(config.timeZone)
     .onRun(async (context) => {
-      console.log("This function will run every day!");
-      const now = admin.firestore.Timestamp.now().toDate.getHours();
+      console.log("This function will run every 1 hour at time zone ", config.timeZone);
+      const now = admin.firestore.Timestamp.now().toDate();
+      console.log("checking for lives at ", now);
+      console.log("hour is ", now.getHours());
       const db = admin.firestore();
       const liveQuery = db.collection(podcastCollection)
-          .where("liveTime", "==", now);
+          .where("liveTime", "==", now.getHours());
       const task = await liveQuery.get();
 
       task.forEach((snapshot) => {
         if (snapshot.exists) {
           const podcast = getPodcastObject(snapshot.data());
+          console.warn("Podcast ", podcast.name, "should be live");
           requestYoutubeLive(podcast.youtubeId, (response) => {
-            const videoData = getVideoObject(response.items[0]);
-            sendPodcastLiveNotification(podcast, podcast.id, videoData);
+            sendPodcastLiveNotification(podcast, podcast.id, response);
           });
         } else {
-          console.log(`No podcast scheduled for this hour ${now}`);
+          console.error(`No podcast scheduled for this hour ${now}`);
         }
       });
     });
@@ -60,34 +64,9 @@ function getPodcastObject(dataSnapshot) {
     "notificationIcon": dataSnapshot["notificationIcon"],
     "highLightColor": dataSnapshot["highLightColor"],
     "liveTime": dataSnapshot["liveTime"],
+    "uploads": dataSnapshot["uploads"],
   };
   return podcast;
-}
-/**
- *
- * @param {jsonObject} videoJson retrieved from youtube API
- * @return {videoObject} video object to append to live
- */
-function getVideoObject(videoJson) {
-  const video = {
-    "id": videoJson.id.videoId,
-    "description": videoJson.description,
-    "publishedAt": videoJson.publishedAt,
-    "thumbnailUrl": getYoutubeThumb(videoJson.id.videoId),
-    "youtubeId": videoJson.id.videoId,
-    "title": videoJson.title,
-  };
-
-  return video;
-}
-
-/**
- *
- * @param {string} videoId required to concatenate on youtube thumb url
- * @return {string} url to video thumbnail
- */
-function getYoutubeThumb(videoId) {
-  return `"https://img.youtube.com/vi/${videoId}/hqdefault.jpg"`;
 }
 
 /**
@@ -116,7 +95,7 @@ function sendPodcastNotification(podcast, topic, message) {
       "click_action": "com.silent.sparky.features.home.HomeActivity",
     },
     "data": {
-      "podcastId": podcast.id,
+      "podcast": JSON.stringify(podcast),
     },
   };
   console.log("notification payload -> ", payLoad.notification);
@@ -161,17 +140,46 @@ function sendPodcastLiveNotification(podcast, topic, message, video) {
 
 /**
  *
- * @param {string} youtubeId channel to lookup for live
- * @param {function} responseResult if success will return the object
+ * @param {string} videoId required to concatenate on youtube thumb url
+ * @return {string} url to video thumbnail
+ */
+function getYoutubeThumb(videoId) {
+  return `"https://img.youtube.com/vi/${videoId}/hqdefault.jpg"`;
+}
+
+/**
+ *
+ * @param {jsonObject} videoJson retrieved from youtube API
+ * @return {videoObject} video object to append to live
+ */
+function getVideoObject(videoJson) {
+  const video = {
+    "id": videoJson.id.videoId,
+    "description": videoJson.description,
+    "publishedAt": videoJson.publishedAt,
+    "thumbnailUrl": getYoutubeThumb(videoJson.id.videoId),
+    "youtubeId": videoJson.id.videoId,
+    "title": videoJson.title,
+  };
+  return video;
+}
+
+/**
+ *
+ * @param {string} youtubeId youtube channel id to perfom query
+ * @param {videoObjext} responseResult video object to retrieve
  */
 async function requestYoutubeLive(youtubeId, responseResult) {
-  const requestUrl = "https://www.googleapis.com/youtube/v3/";
-  const query = `search?part=snippet&channelId=${youtubeId}`;
-  // eslint-disable-next-line max-len
-  const requestExtras = `&type=video&eventType=live&maxResults=1&key=${config.YOUTUBE_KEY}`;
+  const youtubeRequest = await request
+      .get(youtubeRequestUrl)
+      .query({"channelId": youtubeId})
+      .query({part: "snippet"})
+      .query({type: "video"})
+      .query({eventType: "live"})
+      .query({maxResults: 1})
+      .query({key: config.youtubeKey});
 
-  const requestBuild = requestUrl + query + requestExtras;
-  const youtubeRequest = await request(requestBuild);
+  console.log("Request result ->", youtubeRequest);
   if (!youtubeRequest.error && youtubeRequest.response.statusCode == 200) {
     const object = JSON.parse(youtubeRequest.body);
     if (object.items.length > 0) {
@@ -183,10 +191,4 @@ async function requestYoutubeLive(youtubeId, responseResult) {
   } else {
     console.log(`Error searching for live -> ${youtubeRequest.response}`);
   }
-0) {
-      const object = JSON.parse(body);
-      responseResult(object);
-    } else {
-      console.log(`Error searching for live -> ${response}`);
-    }
-  });
+}
