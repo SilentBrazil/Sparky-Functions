@@ -63,7 +63,6 @@ exports.updateEpisodes = functions.pubsub.schedule("30 00 * * *")
               video.podcastId = podcast.id;
               const timestampDate = new Date(video.publishDate);
               delete video.publishDate;
-              console.log("timestamp date => ", timestampDate);
               video.publishedAt = admin.firestore.Timestamp.fromDate(timestampDate);
               videoCollection.doc(video.id).set(video);
             });
@@ -91,7 +90,6 @@ exports.updateCuts = functions.pubsub.schedule("30 05 * * *")
               video.podcastId = podcast.id;
               const timestampDate = new Date(video.publishDate);
               delete video.publishDate;
-              console.log("timestamp date => ", timestampDate);
               video.publishedAt = admin.firestore.Timestamp.fromDate(timestampDate);
               cutCollection.doc(video.id).set(video);
             });
