@@ -1,7 +1,7 @@
 /* eslint-disable max-len */
 const request = require("request");
-const youtubeRequestUrl = "https://www.googleapis.com/youtube/v3/search";
 const config = require("./config");
+const youtubeService = require("./youtubeservice");
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const podcastCollection = "Podcasts";
@@ -20,32 +20,93 @@ exports.podcastLiveCheck = functions.pubsub
     .schedule("every 1 hours")
     .timeZone(config.timeZone)
     .onRun(async (context) => {
-      console.log("This function will run every 1 hour at time zone ", config.timeZone);
       const now = admin.firestore.Timestamp.now().toDate();
-      console.log("checking for lives at ", now);
-      console.log("hour is ", now.getHours());
+      const convertedTimezone = now.toLocaleString("pt-br", {hour: "numeric", hour12: false, timeZone: config.timeZone});
+      console.log("server date is ", now);
+      console.log("local time is ", convertedTimezone);
+      const convertedHour = parseInt(convertedTimezone);
+      console.log("checking for lives at: ", convertedHour);
       const db = admin.firestore();
       const liveQuery = db.collection(podcastCollection)
-          .where("liveTime", "==", now.getHours());
+          .where("liveTime", "==", convertedHour);
       const task = await liveQuery.get();
+      if (task.empty) {
+        console.error(`No podcast scheduled for this hour ${convertedHour}`);
+      } else {
+        task.forEach((snapshot) => {
+          if (snapshot.exists) {
+            const podcast = getPodcastObject(snapshot.data());
+            console.warn("Podcast ", podcast.name, "should be live");
+            requestYoutubeLive(podcast.youtubeId, (video) => {
+              const title = video.title;
+              sendPodcastLiveNotification(podcast, podcast.id, `Estamos ao vivo com ${title}`, video);
+            });
+          }
+        });
+      }
+    });
 
-      task.forEach((snapshot) => {
+
+exports.updateEpisodes = functions.pubsub.schedule("30 00 * * *")
+    .timeZone(config.timeZone)
+    .onRun(async (context) => {
+      const db = admin.firestore();
+      const podcastCollection = db.collection(config.podcastPath);
+      const videoCollection = db.collection(config.episodesPath);
+      const podcastsTask = await podcastCollection.orderBy("subscribe").get();
+      podcastsTask.forEach((snapshot) => {
         if (snapshot.exists) {
           const podcast = getPodcastObject(snapshot.data());
-          console.warn("Podcast ", podcast.name, "should be live");
-          requestYoutubeLive(podcast.youtubeId, (response) => {
-            sendPodcastLiveNotification(podcast, podcast.id, response);
+          youtubeService.requestPlaylist(podcast.uploads, (videos) => {
+            console.log("Retrieving ", videos.length, " videos.");
+            videos.forEach((video) => {
+              video.podcastId = podcast.id;
+              const timestampDate = new Date(video.publishDate);
+              delete video.publishDate;
+              console.log("timestamp date => ", timestampDate);
+              video.publishedAt = admin.firestore.Timestamp.fromDate(timestampDate);
+              videoCollection.doc(video.id).set(video);
+            });
+            sendPodcastNotification(podcast, podcast.id, `Novos episódios no ${podcast.name}`);
           });
         } else {
-          console.error(`No podcast scheduled for this hour ${now}`);
+          console.error("Snapshot not found!");
+        }
+      });
+    });
+
+exports.updateCuts = functions.pubsub.schedule("30 05 * * *")
+    .timeZone(config.timeZone)
+    .onRun(async (context) => {
+      const db = admin.firestore();
+      const podcastCollection = db.collection(config.podcastPath);
+      const cutCollection = db.collection(config.cutsPath);
+      const podcastsTask = await podcastCollection.orderBy("subscribe").get();
+      podcastsTask.forEach((snapshot) => {
+        if (snapshot.exists) {
+          const podcast = getPodcastObject(snapshot.data());
+          youtubeService.requestPlaylist(podcast.cuts, (videos) => {
+            console.log("Retrieving ", videos.length, " videos.");
+            videos.forEach((video) => {
+              video.podcastId = podcast.id;
+              const timestampDate = new Date(video.publishDate);
+              delete video.publishDate;
+              console.log("timestamp date => ", timestampDate);
+              video.publishedAt = admin.firestore.Timestamp.fromDate(timestampDate);
+              cutCollection.doc(video.id).set(video);
+            });
+            sendPodcastNotification(podcast, podcast.id, `Novos cortes no ${podcast.name}`);
+          });
+        } else {
+          console.error("Snapshot not found!");
         }
       });
     });
 
 exports.podcastUpdate = functions.firestore.document("Podcasts/{podcastId}")
     .onWrite((change, context) => {
-      const dataSnapshot = change.after.data();
-      const podcast = getPodcastObject(dataSnapshot);
+      const snapshot = change.after.data();
+      const podcast = getPodcastObject(snapshot);
       return sendPodcastNotification(podcast,
           podcast.id,
           `Tem novidade no ${podcast.name}`);
@@ -57,15 +118,18 @@ exports.podcastUpdate = functions.firestore.document("Podcasts/{podcastId}")
  */
 function getPodcastObject(dataSnapshot) {
   const podcast = {
-    "id": dataSnapshot.id,
+    "id": dataSnapshot["id"],
     "name": dataSnapshot["name"],
-    "iconURL": dataSnapshot["iconUrl"],
+    "iconURL": dataSnapshot["iconURL"],
     "slogan": dataSnapshot["slogan"],
     "notificationIcon": dataSnapshot["notificationIcon"],
     "highLightColor": dataSnapshot["highLightColor"],
     "liveTime": dataSnapshot["liveTime"],
     "uploads": dataSnapshot["uploads"],
+    "cuts": dataSnapshot["cuts"],
+    "youtubeId": dataSnapshot["youtubeID"],
   };
+  console.log("Podcast => ", JSON.stringify(podcast));
   return podcast;
 }
 
@@ -79,7 +143,6 @@ function getPodcastObject(dataSnapshot) {
 function sendPodcastNotification(podcast, topic, message) {
   let notIcon = "sparky_icon";
   let title = "Salve Salve família";
-  console.log("Podcast: ", podcast);
   if (podcast.slogan) {
     title = podcast.slogan;
   }
@@ -98,7 +161,7 @@ function sendPodcastNotification(podcast, topic, message) {
       "podcast": JSON.stringify(podcast),
     },
   };
-  console.log("notification payload -> ", payLoad.notification);
+  console.log("notification payload -> ", JSON.stringify(payLoad.notification));
   return admin.messaging().sendToTopic(topic, payLoad);
 }
 
@@ -114,7 +177,6 @@ function sendPodcastNotification(podcast, topic, message) {
 function sendPodcastLiveNotification(podcast, topic, message, video) {
   let notIcon = "sparky_icon";
   let title = "Salve Salve família";
-  console.log("Podcast: ", podcast);
   if (podcast.slogan) {
     title = podcast.slogan;
   }
@@ -134,7 +196,7 @@ function sendPodcastLiveNotification(podcast, topic, message, video) {
       "video": JSON.stringify(video),
     },
   };
-  console.log("notification payload -> ", payLoad.notification);
+  console.log("live notification payload -> ", JSON.stringify(payLoad.notification));
   return admin.messaging().sendToTopic(topic, payLoad);
 }
 
@@ -155,11 +217,11 @@ function getYoutubeThumb(videoId) {
 function getVideoObject(videoJson) {
   const video = {
     "id": videoJson.id.videoId,
-    "description": videoJson.description,
-    "publishedAt": videoJson.publishedAt,
+    "description": videoJson.snippet.description,
+    "publishedAt": videoJson.snippet.publishedAt,
     "thumbnailUrl": getYoutubeThumb(videoJson.id.videoId),
     "youtubeId": videoJson.id.videoId,
-    "title": videoJson.title,
+    "title": videoJson.snippet.title,
   };
   return video;
 }
@@ -170,25 +232,24 @@ function getVideoObject(videoJson) {
  * @param {videoObjext} responseResult video object to retrieve
  */
 async function requestYoutubeLive(youtubeId, responseResult) {
-  const youtubeRequest = await request
-      .get(youtubeRequestUrl)
-      .query({"channelId": youtubeId})
-      .query({part: "snippet"})
-      .query({type: "video"})
-      .query({eventType: "live"})
-      .query({maxResults: 1})
-      .query({key: config.youtubeKey});
+  const queryString = `?part=snippet&channelId=${youtubeId}&type=video&eventType=live&maxResults=1&key=${config.youtubeKey}`;
+  const options = {
+    path: "search" + queryString,
+    method: "GET",
+  };
+  const requestURl = config.youtubeApiURl + options.path;
+  console.log("requesting =>", requestURl);
+  const youtubeRequest = request.get(requestURl, function(error, response, body) {
+    console.log("error:", error);
+    console.log("statusCode:", response && response.statusCode);
 
-  console.log("Request result ->", youtubeRequest);
-  if (!youtubeRequest.error && youtubeRequest.response.statusCode == 200) {
-    const object = JSON.parse(youtubeRequest.body);
+    const object = JSON.parse(body);
     if (object.items.length > 0) {
-      const video = getVideoObject(object.items[0]);
-      responseResult(video);
+      const videoObject = getVideoObject(object.items[0]);
+      responseResult(videoObject);
     } else {
-      console.error("API didn't found any result for id ", youtubeId);
+      console.error("No live founded for => ", youtubeId);
     }
-  } else {
-    console.log(`Error searching for live -> ${youtubeRequest.response}`);
-  }
+  });
+  youtubeRequest.end();
 }
