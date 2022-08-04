@@ -14,9 +14,10 @@
   },
   "main": "index.js",
   "dependencies": {
-    "request": "2.88.2",
+    "capitalize": "^2.0.4",
     "firebase-admin": "^10.0.2",
-    "firebase-functions": "^3.18.0"
+    "firebase-functions": "^3.18.0",
+    "request": "2.88.2"
   },
   "devDependencies": {
     "eslint": "^8.9.0",

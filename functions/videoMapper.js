@@ -8,7 +8,7 @@ module.exports = {
       "id": id,
       "publishDate": videoResponse.snippet.publishedAt,
       "thumbnailUrl": videoResponse.snippet.thumbnails.high.url,
-      "youtubeId": id,
+      "youtubeID": id,
       "title": videoResponse.snippet.title,
     };
     console.log("Video => ", JSON.stringify(video));

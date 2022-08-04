@@ -1,4 +1,5 @@
 /* eslint-disable max-len */
+const capitalize = require("capitalize");
 const request = require("request");
 const config = require("./config");
 const youtubeService = require("./youtubeservice");
@@ -38,7 +39,7 @@ exports.podcastLiveCheck = functions.pubsub
             const podcast = getPodcastObject(snapshot.data());
             console.warn("Podcast ", podcast.name, "should be live");
             requestYoutubeLive(podcast.youtubeId, (video) => {
-              const title = video.title;
+              const title = capitalize.words(video.title.substring(0, video.title.indexOf("-")).toLowerCase());
               sendPodcastLiveNotification(podcast, podcast.id, `Estamos ao vivo com ${title}`, video);
             });
           }
@@ -53,26 +54,50 @@ exports.updateEpisodes = functions.pubsub.schedule("30 00 * * *")
       const db = admin.firestore();
       const podcastCollection = db.collection(config.podcastPath);
       const videoCollection = db.collection(config.episodesPath);
-      const podcastsTask = await podcastCollection.orderBy("subscribe").get();
+      const podcastsTask = await podcastCollection.orderBy("subscribe", "desc").get();
       podcastsTask.forEach((snapshot) => {
         if (snapshot.exists) {
           const podcast = getPodcastObject(snapshot.data());
-          youtubeService.requestPlaylist(podcast.uploads, (videos) => {
+          youtubeService.requestPlaylist(podcast.uploads, 10, (videos) => {
             console.log("Retrieving ", videos.length, " videos.");
-            videos.forEach((video) => {
+            videos.forEach(async (video) => {
               video.podcastId = podcast.id;
               const timestampDate = new Date(video.publishDate);
               delete video.publishDate;
               video.publishedAt = admin.firestore.Timestamp.fromDate(timestampDate);
-              videoCollection.doc(video.id).set(video);
+              const pushTask = await videoCollection.doc(video.id).set(video);
+              console.log("Added video with id => ", pushTask.id);
             });
-            sendPodcastNotification(podcast, podcast.id, `Novos episódios no ${podcast.name}`);
+            const message = `Novos episódios no ${podcast.name} com convidados como ${getGuestsNames(videos.slice(0, 5))}`;
+            sendPodcastNotification(podcast, podcast.id, message);
           });
         } else {
           console.error("Snapshot not found!");
         }
       });
     });
+
+/**
+ *
+ * @param {array} videos list of recent episodes fetched on youtube api
+ * @return {string} manipulated string with guest names
+ */
+function getGuestsNames(videos) {
+  let guestName = "";
+  for (let i = 0; i< videos.length; i++) {
+    const video = videos[i];
+    const title = capitalize.words(video.title.substring(0, video.title.indexOf("-")).toLowerCase());
+    if (i == videos.length - 1) {
+      guestName += ` e ${title}.`;
+    } else if (i == videos.length - 2) {
+      guestName += ` ${title}`;
+    } else {
+      guestName += ` ${title},`;
+    }
+  }
+  return guestName;
+}
+
 
 exports.updateCuts = functions.pubsub.schedule("30 05 * * *")
     .timeZone(config.timeZone)
@@ -84,14 +109,15 @@ exports.updateCuts = functions.pubsub.schedule("30 05 * * *")
       podcastsTask.forEach((snapshot) => {
         if (snapshot.exists) {
           const podcast = getPodcastObject(snapshot.data());
-          youtubeService.requestPlaylist(podcast.cuts, (videos) => {
+          youtubeService.requestPlaylist(podcast.cuts, 50, (videos) => {
             console.log("Retrieving ", videos.length, " videos.");
-            videos.forEach((video) => {
+            videos.forEach(async (video) => {
               video.podcastId = podcast.id;
               const timestampDate = new Date(video.publishDate);
               delete video.publishDate;
               video.publishedAt = admin.firestore.Timestamp.fromDate(timestampDate);
-              cutCollection.doc(video.id).set(video);
+              const pushTask = await cutCollection.doc(video.id).set(video);
+              console.log("Added video with id => ", pushTask.id);
             });
             sendPodcastNotification(podcast, podcast.id, `Novos cortes no ${podcast.name}`);
           });
@@ -152,7 +178,7 @@ function sendPodcastNotification(podcast, topic, message) {
       "icon": notIcon,
       "color": String(podcast.highLightColor),
       "title": title,
-      "body": message,
+      "body": message.replace("undefined", ""),
       "click_action": "com.silent.sparky.features.home.HomeActivity",
     },
     "data": {

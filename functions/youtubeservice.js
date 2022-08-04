@@ -7,10 +7,10 @@ const videoMapper = require("./videoMapper");
 
 module.exports = {
 
-  requestPlaylist: async function(playlistId, responseResult) {
+  requestPlaylist: async function(playlistId, maxResults, responseResult) {
     const options = {
       path: "playlistItems",
-      query: `?part=snippet&playlistId=${playlistId}&maxResults=50&key=${config.youtubeKey}`,
+      query: `?part=snippet&playlistId=${playlistId}&maxResults=${maxResults}&key=${config.youtubeKey}`,
     };
     const requestURL = config.youtubeApiURl + options.path + options.query;
     console.log("requesting => ", requestURL);
