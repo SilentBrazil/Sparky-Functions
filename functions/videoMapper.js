@@ -6,6 +6,7 @@ module.exports = {
     const id = videoResponse.snippet.resourceId.videoId;
     const video = {
       "id": id,
+      "description": videoResponse.snippet.description,
       "publishDate": videoResponse.snippet.publishedAt,
       "thumbnailUrl": videoResponse.snippet.thumbnails.high.url,
       "youtubeID": id,
@@ -19,12 +20,23 @@ module.exports = {
     const video = {
       "id": videoResponse.id.videoId,
       "description": videoResponse.snippet.description,
-      "publishedAt": videoResponse.snippet.publishedAt,
       "thumbnailUrl": videoResponse.snippet.thumbnails.high.url,
-      "youtubeId": videoResponse.id.videoId,
+      "youtubeID": videoResponse.id.videoId,
       "title": videoResponse.snippet.title,
     };
     console.log("Video => ", JSON.stringify(video));
     return video;
+  },
+
+  mapChannelResponse: function(channelResponse) {
+    const channel = {
+      "name": channelResponse.snippet.title,
+      "publishedAt": channelResponse.snippet.publishedAt,
+      "iconURL": channelResponse.snippet.thumbnails.high.url,
+      "subscribe": channelResponse.snippet.subscriberCount,
+      "viewCount": channelResponse.snippet.viewCount,
+      "uploads": channelResponse.contentDetails.relatedPlaylists.uploads,
+    };
+    return channel;
   },
 };
